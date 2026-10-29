@@ -252,6 +252,12 @@ MIT — см. [LICENSE](LICENSE).
 
 ## Журнал прогресса
 
+### v0.7.1 (2026-10-29, фикс инсетов сверху)
+- [x] Регрессия v0.5: при замене Material `TopAppBar` на кастомный хедер потерялись
+      статус-бар-инсеты (TopAppBar применял их сам). Хедер редактора получил `statusBarsPadding()`,
+      главный экран — `safeDrawingPadding()` (статус-бар + чёлка + home indicator/навбар).
+      Урок: убирая компонент M3, проверяй неявные инсеты, которые он применял
+
 ### v0.7 (2026-10-29, i18n + поведенческие фиксы)
 - [x] **Строки UI вынесены в ресурсы** Compose Multiplatform (`compose.components.resources`):
       `composeApp/src/commonMain/composeResources/values/strings.xml` (база — русский) +

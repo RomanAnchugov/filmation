@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,11 +53,13 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // статус-бар/чёлка сверху + системный навбар/home indicator снизу
+            .safeDrawingPadding()
             .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // «шапка кассеты»: тех-мета плёнки
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
