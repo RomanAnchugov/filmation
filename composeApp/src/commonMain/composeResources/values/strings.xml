@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Главный экран -->
+    <string name="home_tagline">ЭМУЛЯТОР ПЛЁНОЧНОГО КАДРА</string>
+    <string name="home_subtitle">зерно · халация · засветы · bloom</string>
+    <string name="home_pick_photo">ЗАГРУЗИТЬ КАДР</string>
+    <string name="home_privacy">фото остаётся на устройстве</string>
+
+    <!-- Редактор: общий -->
+    <string name="editor_custom_preset">СВОЯ ОБРАБОТКА</string>
+    <string name="editor_back">Назад</string>
+    <string name="editor_random">Случайная плёнка</string>
+    <string name="editor_before_after">До/после</string>
+    <string name="editor_export">Экспорт</string>
+    <string name="editor_preview">Превью с эффектами</string>
+
+    <!-- Секции -->
+    <string name="section_light">Свет</string>
+    <string name="section_film">Плёнка</string>
+    <string name="section_texture">Текстура</string>
+    <string name="section_artifacts">Засветы и блики</string>
+
+    <!-- Слайдеры -->
+    <string name="slider_exposure">Экспозиция</string>
+    <string name="slider_bloom">Свечение (bloom)</string>
+    <string name="slider_halation">Халация</string>
+    <string name="slider_curve">Контраст (S-кривая)</string>
+    <string name="slider_fade">Матовые тени (fade)</string>
+    <string name="slider_warm">Света: тепло / холод</string>
+    <string name="slider_grain">Зерно</string>
+    <string name="slider_vignette">Виньетка</string>
+    <string name="slider_variant">Вариант</string>
+    <string name="slider_strength">Сила</string>
+
+    <!-- Статусы -->
+    <string name="status_saved">Сохранено в галерею</string>
+    <string name="status_save_failed">Не удалось сохранить</string>
+</resources>

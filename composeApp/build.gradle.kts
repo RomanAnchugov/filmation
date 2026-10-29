@@ -7,6 +7,12 @@ plugins {
     alias(libs.plugins.kotlin.compose.compiler)
 }
 
+compose {
+    resources {
+        packageOfResClass = "com.filmation.res"
+    }
+}
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -29,6 +35,8 @@ kotlin {
             implementation(compose.ui)
             // Набор иконок заморожен на 1.7.3 — норм для пары кнопок в AppBar
             implementation(compose.materialIconsExtended)
+            // Строки UI: единый источник + локализация (values/ = ru, values-en/ = en)
+            implementation(compose.components.resources)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

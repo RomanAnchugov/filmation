@@ -74,12 +74,37 @@ import com.filmation.photo.encodeJpeg
 import com.filmation.photo.saveJpegToGallery
 import com.filmation.photo.toImageBitmap
 import com.filmation.ui.components.FilmPerforations
+import com.filmation.res.Res
+import com.filmation.res.editor_back
+import com.filmation.res.editor_before_after
+import com.filmation.res.editor_custom_preset
+import com.filmation.res.editor_export
+import com.filmation.res.editor_preview
+import com.filmation.res.editor_random
+import com.filmation.res.section_artifacts
+import com.filmation.res.section_film
+import com.filmation.res.section_light
+import com.filmation.res.section_texture
+import com.filmation.res.slider_bloom
+import com.filmation.res.slider_curve
+import com.filmation.res.slider_exposure
+import com.filmation.res.slider_fade
+import com.filmation.res.slider_grain
+import com.filmation.res.slider_halation
+import com.filmation.res.slider_strength
+import com.filmation.res.slider_variant
+import com.filmation.res.slider_vignette
+import com.filmation.res.slider_warm
+import com.filmation.res.status_save_failed
+import com.filmation.res.status_saved
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
+import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.time.TimeSource
 
@@ -143,6 +168,19 @@ private class EditorUiState {
     /** Параметры, применённые к последнему показанному кадру (для прерывания устаревших рендеров). */
     fun effectiveParams(): FilmParams = if (showOriginal) FilmParams.Neutral else params
 
+    /** Применить пресет: параметры + выход из режима «до/после». */
+    fun applyPreset(id: String, p: FilmParams) {
+        presetId = id
+        params = p
+        showOriginal = false
+    }
+
+    /** Ручная правка слайдером: параметры отклонились от пресета. */
+    fun onManualChange(p: FilmParams) {
+        params = p
+        presetId = null
+    }
+
     /** Случайная (но осмысленная) плёнка. */
     fun randomize() {
         val rnd = Random.Default
@@ -166,6 +204,7 @@ private class EditorUiState {
             seed = rnd.nextInt(0, 1000),
         )
         presetId = null
+        showOriginal = false
     }
 
     private fun Random.nextFloat(from: Float, to: Float) =
@@ -182,6 +221,10 @@ fun EditorScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val renderer = remember { FilmRenderer() }
+
+    // Строки статусов — только в composable-контексте, дальше уходят в фон.
+    val statusSaved = stringResource(Res.string.status_saved)
+    val statusFailed = stringResource(Res.string.status_save_failed)
 
     // Декодирование и подготовка производных копий — один раз на фото.
     val sources by produceState<PhotoSources?>(initialValue = null, photoBytes) {
@@ -249,7 +292,8 @@ fun EditorScreen(
 
                 val rendered = withContext(Dispatchers.Default) {
                     // прерываем рендер, если пользователь уже изменил параметры:
-                    // тяжёлый кадр не должен блокировать интерактив
+                    // тяжёлый кадр не должен блокировать интерактив.
+                    // (чтение snapshot-состояния из фонового потока — безопасно)
                     renderer.render(source, src.glow, p, pw, ph, src.salt) {
                         !isActive || state.effectiveParams() != p || state.dragging != draggingNow
                     }
@@ -282,7 +326,7 @@ fun EditorScreen(
                 IconButton(onClick = onClose) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Назад",
+                        contentDescription = stringResource(Res.string.editor_back),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -300,8 +344,8 @@ fun EditorScreen(
                     )
                     Text(
                         state.presetId?.let { id ->
-                            FilmPresets.all.firstOrNull { it.id == id }?.title?.uppercase() ?: "СВОЯ"
-                        } ?: "СВОЯ ОБРАБОТКА",
+                            FilmPresets.all.firstOrNull { it.id == id }?.title?.uppercase()
+                        } ?: stringResource(Res.string.editor_custom_preset),
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 2.sp,
@@ -309,24 +353,35 @@ fun EditorScreen(
                     )
                 }
                 IconButton(onClick = { state.randomize() }) {
-                    Icon(Icons.Filled.Casino, contentDescription = "Случайная плёнка")
+                    Icon(
+                        Icons.Filled.Casino,
+                        contentDescription = stringResource(Res.string.editor_random),
+                    )
                 }
                 IconButton(onClick = { state.showOriginal = !state.showOriginal }) {
                     Icon(
                         Icons.Filled.Flip,
-                        contentDescription = "До/после",
+                        contentDescription = stringResource(Res.string.editor_before_after),
                         tint = if (state.showOriginal) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(
-                    onClick = { exportPhoto(renderer, src, state, scope, snackbar) },
+                    onClick = {
+                        exportPhoto(
+                            renderer, src, state, scope, snackbar,
+                            statusSaved, statusFailed,
+                        )
+                    },
                     enabled = !state.exporting,
                 ) {
                     if (state.exporting) {
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Filled.Download, contentDescription = "Экспорт")
+                        Icon(
+                            Icons.Filled.Download,
+                            contentDescription = stringResource(Res.string.editor_export),
+                        )
                     }
                 }
             }
@@ -364,7 +419,7 @@ fun EditorScreen(
                     if (bmp != null) {
                         Image(
                             bitmap = bmp,
-                            contentDescription = "Превью с эффектами",
+                            contentDescription = stringResource(Res.string.editor_preview),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(photoAspect)
@@ -397,10 +452,7 @@ fun EditorScreen(
                     PresetChip(
                         title = preset.title,
                         selected = state.presetId == preset.id,
-                        onClick = {
-                            state.presetId = preset.id
-                            state.params = preset.params
-                        },
+                        onClick = { state.applyPreset(preset.id, preset.params) },
                     )
                 }
             }
@@ -416,69 +468,78 @@ fun EditorScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                item { SectionLabel("Свет") }
-                item {
-                    ParamSlider("Экспозиция", state.params.exposure, -2f..2f, state) { v ->
-                        state.params = state.params.copy(exposure = v)
-                    }
-                }
-                item {
-                    ParamSlider("Свечение (bloom)", state.params.bloom, 0f..1f, state) { v ->
-                        state.params = state.params.copy(bloom = v)
-                    }
-                }
-                item {
-                    ParamSlider("Халация", state.params.halation, 0f..1f, state) { v ->
-                        state.params = state.params.copy(halation = v)
-                    }
-                }
-
-                item { SectionLabel("Плёнка") }
-                item {
-                    ParamSlider("Контраст (S-кривая)", state.params.curve, 0f..1f, state) { v ->
-                        state.params = state.params.copy(curve = v)
-                    }
-                }
-                item {
-                    ParamSlider("Матовые тени (fade)", state.params.fade, 0f..1f, state) { v ->
-                        state.params = state.params.copy(fade = v)
-                    }
-                }
-                item {
-                    ParamSlider("Света: тепло / холод", state.params.warm, -1f..1f, state) { v ->
-                        state.params = state.params.copy(warm = v)
-                    }
-                }
-
-                item { SectionLabel("Текстура") }
-                item {
-                    ParamSlider("Зерно", state.params.grain, 0f..1f, state) { v ->
-                        state.params = state.params.copy(grain = v)
-                    }
-                }
-                item {
-                    ParamSlider("Виньетка", state.params.vignette, 0f..1f, state) { v ->
-                        state.params = state.params.copy(vignette = v)
-                    }
-                }
-
-                item { SectionLabel("Засветы и блики") }
+                item { SectionLabel(stringResource(Res.string.section_light)) }
                 item {
                     ParamSlider(
-                        "Вариант",
-                        state.params.artifactVariant.toFloat(),
-                        0f..16f,
-                        state,
+                        stringResource(Res.string.slider_exposure),
+                        state.params.exposure, -2f..2f, state,
+                    ) { v -> state.onManualChange(state.params.copy(exposure = v)) }
+                }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_bloom),
+                        state.params.bloom, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(bloom = v)) }
+                }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_halation),
+                        state.params.halation, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(halation = v)) }
+                }
+
+                item { SectionLabel(stringResource(Res.string.section_film)) }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_curve),
+                        state.params.curve, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(curve = v)) }
+                }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_fade),
+                        state.params.fade, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(fade = v)) }
+                }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_warm),
+                        state.params.warm, -1f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(warm = v)) }
+                }
+
+                item { SectionLabel(stringResource(Res.string.section_texture)) }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_grain),
+                        state.params.grain, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(grain = v)) }
+                }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_vignette),
+                        state.params.vignette, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(vignette = v)) }
+                }
+
+                item { SectionLabel(stringResource(Res.string.section_artifacts)) }
+                item {
+                    ParamSlider(
+                        stringResource(Res.string.slider_variant),
+                        state.params.artifactVariant.toFloat(), 0f..16f, state,
                         steps = 15,
                         format = { it.toInt().toString() },
                     ) { v ->
-                        state.params = state.params.copy(artifactVariant = v.toInt())
+                        state.onManualChange(
+                            state.params.copy(artifactVariant = v.toInt()),
+                        )
                     }
                 }
                 item {
-                    ParamSlider("Сила", state.params.artifacts, 0f..1f, state) { v ->
-                        state.params = state.params.copy(artifacts = v)
-                    }
+                    ParamSlider(
+                        stringResource(Res.string.slider_strength),
+                        state.params.artifacts, 0f..1f, state,
+                    ) { v -> state.onManualChange(state.params.copy(artifacts = v)) }
                 }
             }
         }
@@ -510,6 +571,8 @@ private fun exportPhoto(
     state: EditorUiState,
     scope: CoroutineScope,
     snackbar: SnackbarHostState,
+    statusSaved: String,
+    statusFailed: String,
 ) {
     if (state.exporting) return
     state.exporting = true
@@ -526,7 +589,7 @@ private fun exportPhoto(
         }
         val saved = jpeg != null && runCatching { saveJpegToGallery(jpeg) }.getOrDefault(false)
         state.exporting = false
-        snackbar.showSnackbar(if (saved) "Сохранено в галерею" else "Не удалось сохранить")
+        snackbar.showSnackbar(if (saved) statusSaved else statusFailed)
     }
 }
 
@@ -632,5 +695,8 @@ private fun ParamSlider(
     }
 }
 
-private fun formatValue(v: Float): String =
-    (kotlin.math.round((v * 100).toDouble()) / 100.0).toString()
+private fun formatValue(v: Float): String {
+    val rounded = kotlin.math.round((v * 100).toDouble()) / 100.0
+    // убираем «-0.0»
+    return if (abs(rounded) < 0.005) "0.0" else rounded.toString()
+}

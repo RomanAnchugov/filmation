@@ -1,7 +1,5 @@
 package com.filmation.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +29,19 @@ import androidx.compose.ui.unit.sp
 import com.filmation.photo.rememberPhotoPicker
 import com.filmation.ui.components.FilmPerforations
 import com.filmation.ui.components.ViewfinderCorners
+import org.jetbrains.compose.resources.stringResource
+import com.filmation.res.Res
+import com.filmation.res.home_pick_photo
+import com.filmation.res.home_privacy
+import com.filmation.res.home_subtitle
+import com.filmation.res.home_tagline
+
+/**
+ * Декоративная маркировка кассеты — часть визуального стиля, языкозависимой
+ * нагрузки не несёт (как и названия плёнок в пресетах), поэтому не локализуется.
+ */
+private val CARTRIDGE_META_TOP = listOf("● 36 EXP", "ISO 200", "24A ▸ 25A")
+private val CARTRIDGE_META_BOTTOM = listOf("DX 400", "35 mm", "PROCESS C-41")
 
 @Composable
 fun HomeScreen(
@@ -50,9 +61,7 @@ fun HomeScreen(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            MetaText("● 36 EXP")
-            MetaText("ISO 200")
-            MetaText("24A ▸ 25A")
+            CARTRIDGE_META_TOP.forEach { MetaText(it) }
         }
         Row(
             Modifier
@@ -60,9 +69,7 @@ fun HomeScreen(
                 .padding(top = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            MetaText("DX 400")
-            MetaText("35 mm")
-            MetaText("PROCESS C-41")
+            CARTRIDGE_META_BOTTOM.forEach { MetaText(it) }
         }
 
         Spacer(Modifier.height(28.dp))
@@ -99,7 +106,7 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(18.dp))
                 Text(
-                    text = "ЭМУЛЯТОР ПЛЁНОЧНОГО КАДРА",
+                    text = stringResource(Res.string.home_tagline),
                     style = MaterialTheme.typography.labelMedium,
                     fontFamily = FontFamily.Monospace,
                     letterSpacing = 3.sp,
@@ -107,7 +114,7 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "зерно · халация · засветы · bloom",
+                    text = stringResource(Res.string.home_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.outline,
@@ -135,7 +142,7 @@ fun HomeScreen(
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                "ЗАГРУЗИТЬ КАДР",
+                stringResource(Res.string.home_pick_photo),
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp,
@@ -143,6 +150,13 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        Text(
+            text = stringResource(Res.string.home_privacy),
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.outline,
+        )
 
         Spacer(Modifier.weight(1f))
 

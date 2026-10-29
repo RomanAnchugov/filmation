@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home screen -->
+    <string name="home_tagline">35MM FILM FRAME EMULATOR</string>
+    <string name="home_subtitle">grain · halation · light leaks · bloom</string>
+    <string name="home_pick_photo">LOAD A FRAME</string>
+    <string name="home_privacy">photos never leave your device</string>
+
+    <!-- Editor: common -->
+    <string name="editor_custom_preset">CUSTOM</string>
+    <string name="editor_back">Back</string>
+    <string name="editor_random">Random film</string>
+    <string name="editor_before_after">Before/after</string>
+    <string name="editor_export">Export</string>
+    <string name="editor_preview">Preview with effects</string>
+
+    <!-- Sections -->
+    <string name="section_light">Light</string>
+    <string name="section_film">Film</string>
+    <string name="section_texture">Texture</string>
+    <string name="section_artifacts">Light leaks &amp; flares</string>
+
+    <!-- Sliders -->
+    <string name="slider_exposure">Exposure</string>
+    <string name="slider_bloom">Glow (bloom)</string>
+    <string name="slider_halation">Halation</string>
+    <string name="slider_curve">Contrast (S-curve)</string>
+    <string name="slider_fade">Matte shadows (fade)</string>
+    <string name="slider_warm">Highlights: warm / cool</string>
+    <string name="slider_grain">Grain</string>
+    <string name="slider_vignette">Vignette</string>
+    <string name="slider_variant">Variant</string>
+    <string name="slider_strength">Strength</string>
+
+    <!-- Status -->
+    <string name="status_saved">Saved to gallery</string>
+    <string name="status_save_failed">Failed to save</string>
+</resources>
