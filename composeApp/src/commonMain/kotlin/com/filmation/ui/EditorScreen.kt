@@ -1,11 +1,11 @@
 package com.filmation.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +41,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -67,17 +68,20 @@ import com.filmation.fx.FilmPresets
 import com.filmation.fx.FilmRenderer
 import com.filmation.fx.MAX_EXPORT_SIDE
 import com.filmation.fx.PhotoSources
+import com.filmation.fx.PixelImage
 import com.filmation.photo.decodeToPixelImage
 import com.filmation.photo.encodeJpeg
 import com.filmation.photo.saveJpegToGallery
 import com.filmation.photo.toImageBitmap
 import com.filmation.ui.components.FilmPerforations
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
+import kotlin.time.TimeSource
 
 /** Состояние pinch-to-zoom превью. Смещения — в пикселях контейнера. */
 private class ZoomState {
@@ -87,7 +91,14 @@ private class ZoomState {
     var width by mutableStateOf(0f)
     var height by mutableStateOf(0f)
 
+    /** Метка последнего жеста (монотонные часы) — для дебаунса перерендера под зум. */
+    private var lastGestureAt = TimeSource.Monotonic.markNow()
+
+    /** Мс с момента последнего жеста. */
+    fun quietForMs(): Long = lastGestureAt.elapsedNow().inWholeMilliseconds
+
     fun applyGesture(centroid: Offset, pan: Offset, zoom: Float) {
+        lastGestureAt = TimeSource.Monotonic.markNow()
         val old = scale
         val new = (old * zoom).coerceIn(1f, MAX_ZOOM)
         if (new <= 1.001f) {
@@ -112,6 +123,7 @@ private class ZoomState {
         scale = 1f
         offsetX = 0f
         offsetY = 0f
+        lastGestureAt = TimeSource.Monotonic.markNow()
     }
 
     companion object {
@@ -127,6 +139,9 @@ private class EditorUiState {
 
     /** Слайдер в процессе драга — рендерим превью в пониженном разрешении. */
     var dragging by mutableStateOf(false)
+
+    /** Параметры, применённые к последнему показанному кадру (для прерывания устаревших рендеров). */
+    fun effectiveParams(): FilmParams = if (showOriginal) FilmParams.Neutral else params
 
     /** Случайная (но осмысленная) плёнка. */
     fun randomize() {
@@ -186,40 +201,71 @@ fun EditorScreen(
     // Аспект фото фиксирует layout-размер превью: битмапы рендерятся в разных
     // разрешениях (драг 560px / статично 1080px+), но рамка остаётся неизменной.
     val photoAspect = src.preview.width.toFloat() / src.preview.height
+    var previewBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
-    // Рендер превью в фоне. Во время драга слайдера — пониженное разрешение + debounce,
-    // при зуме — после паузы рендер из более детального источника (вплоть до export),
-    // устаревшие рендеры прерываются по isCancelled, старый кадр остаётся на экране.
-    val zoomScale = zoom.scale
-    val previewBitmap by produceState<ImageBitmap?>(
-        initialValue = null,
-        state.params, state.showOriginal, state.dragging, src, zoomScale,
-    ) {
-        delay(if (state.dragging) 24 else 200)
-        val p = if (state.showOriginal) FilmParams.Neutral else state.params
+    // Рендер-насос: опрашивает изменения не чаще ~60 Гц, рендерит свежий кадр,
+    // а устаревшие (пользователь продолжил драг/смену параметров) прерывает
+    // прямо в цикле рендера — тяжёлый рендер не блокирует отклик.
+    LaunchedEffect(src) {
+        var lastParams: FilmParams? = null
+        var lastDragging = false
+        var lastZoom = 0f
         val previewSide = maxOf(src.preview.width, src.preview.height)
         val exportSide = maxOf(src.export.width, src.export.height)
-        val wanted =
-            (if (state.dragging) DRAG_PREVIEW_SIDE else (BASE_PREVIEW_SIDE * zoomScale).toInt())
-                .coerceAtLeast(320)
-        // источник: preview-копия, а при сильном зуме — полный оригинал
-        val (source, srcSide) = if (wanted > previewSide) src.export to exportSide else src.preview to previewSide
-        val maxSide = minOf(wanted, srcSide, ZOOM_RENDER_CAP)
-        val aspect = src.preview.width.toFloat() / src.preview.height
-        val pw: Int
-        val ph: Int
-        if (aspect >= 1f) {
-            pw = maxSide
-            ph = (maxSide / aspect).toInt().coerceAtLeast(1)
-        } else {
-            ph = maxSide
-            pw = (maxSide * aspect).toInt().coerceAtLeast(1)
+
+        while (isActive) {
+            val p = state.effectiveParams()
+            val draggingNow = state.dragging
+            val zoomNow = zoom.scale
+            // перерендер под зум — только когда жест успокоился (пинч не спамит рендерами)
+            val zoomStale = zoomNow != lastZoom && zoom.quietForMs() >= ZOOM_SETTLE_MS
+            val dirty = p != lastParams || draggingNow != lastDragging || zoomStale
+
+            if (dirty) {
+                val wanted = (
+                    if (draggingNow) DRAG_PREVIEW_SIDE
+                    else (BASE_PREVIEW_SIDE * zoomNow).toInt()
+                    ).coerceAtLeast(320)
+                // источник: preview-копия, а при сильном зуме — полный оригинал
+                val source: PixelImage
+                val srcSide: Int
+                if (wanted > previewSide) {
+                    source = src.export
+                    srcSide = exportSide
+                } else {
+                    source = src.preview
+                    srcSide = previewSide
+                }
+                val maxSide = minOf(wanted, srcSide, ZOOM_RENDER_CAP)
+                val pw: Int
+                val ph: Int
+                if (photoAspect >= 1f) {
+                    pw = maxSide
+                    ph = (maxSide / photoAspect).toInt().coerceAtLeast(1)
+                } else {
+                    ph = maxSide
+                    pw = (maxSide * photoAspect).toInt().coerceAtLeast(1)
+                }
+
+                val rendered = withContext(Dispatchers.Default) {
+                    // прерываем рендер, если пользователь уже изменил параметры:
+                    // тяжёлый кадр не должен блокировать интерактив
+                    renderer.render(source, src.glow, p, pw, ph, src.salt) {
+                        !isActive || state.effectiveParams() != p || state.dragging != draggingNow
+                    }
+                }
+                if (rendered != null) {
+                    runCatching { toImageBitmap(rendered) }.getOrNull()?.let {
+                        previewBitmap = it
+                    }
+                }
+                // фиксируем, что отрисовали (и при неудаче — чтобы не крутить цикл ошибок)
+                lastParams = p
+                lastDragging = draggingNow
+                lastZoom = zoomNow
+            }
+            delay(16)
         }
-        value = withContext(Dispatchers.Default) {
-            val rendered = renderer.render(source, src.glow, p, pw, ph, src.salt) { !isActive }
-            if (rendered == null || !isActive) null
-            else runCatching { toImageBitmap(rendered) }.getOrNull()
-        } ?: value
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -455,11 +501,14 @@ private const val BASE_PREVIEW_SIDE = 1080
 /** Потолок разрешения рендера при зуме (баланс детальность/память). */
 private const val ZOOM_RENDER_CAP = 3200
 
+/** Сколько мс жест зума должен «успокоиться», прежде чем перерендеривать детально. */
+private const val ZOOM_SETTLE_MS = 250L
+
 private fun exportPhoto(
     renderer: FilmRenderer,
     src: PhotoSources,
     state: EditorUiState,
-    scope: kotlinx.coroutines.CoroutineScope,
+    scope: CoroutineScope,
     snackbar: SnackbarHostState,
 ) {
     if (state.exporting) return

@@ -18,54 +18,59 @@ actual fun decodeToPixelImage(bytes: ByteArray, maxSide: Int): PixelImage? {
     var sample = 1
     while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-    var bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
 
-    // EXIF-поворот (снимки с камеры часто лежат повёрнутыми).
-    val orientation = runCatching {
-        ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(
-            ExifInterface.TAG_ORIENTATION,
-            ExifInterface.ORIENTATION_NORMAL,
-        )
-    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-    val rotation = when (orientation) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-        ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-        ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-        else -> 0f
-    }
-    if (rotation != 0f) {
-        val m = Matrix().apply { postRotate(rotation) }
-        bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
-    }
+    var bmp = decoded
+    try {
+        // EXIF-поворот (снимки с камеры часто лежат повёрнутыми).
+        val orientation = runCatching {
+            ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL,
+            )
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        val rotation = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotation != 0f) {
+            val m = Matrix().apply { postRotate(rotation) }
+            val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+            if (rotated != bmp) bmp.recycle()
+            bmp = rotated
+        }
 
-    // Точная подгонка под maxSide.
-    val maxDim = maxOf(bmp.width, bmp.height)
-    if (maxDim > maxSide) {
-        val scale = maxSide.toFloat() / maxDim
-        bmp = Bitmap.createScaledBitmap(
-            bmp,
-            (bmp.width * scale).toInt().coerceAtLeast(1),
-            (bmp.height * scale).toInt().coerceAtLeast(1),
-            true,
-        )
-    }
+        // Точная подгонка под maxSide.
+        val maxDim = maxOf(bmp.width, bmp.height)
+        if (maxDim > maxSide) {
+            val scale = maxSide.toFloat() / maxDim
+            val scaled = Bitmap.createScaledBitmap(
+                bmp,
+                (bmp.width * scale).toInt().coerceAtLeast(1),
+                (bmp.height * scale).toInt().coerceAtLeast(1),
+                true,
+            )
+            if (scaled != bmp) bmp.recycle()
+            bmp = scaled
+        }
 
-    val pixels = IntArray(bmp.width * bmp.height)
-    bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-    val w = bmp.width
-    val h = bmp.height
-    bmp.recycle()
-    return PixelImage(w, h, pixels)
+        val pixels = IntArray(bmp.width * bmp.height)
+        bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+        return PixelImage(bmp.width, bmp.height, pixels)
+    } finally {
+        bmp.recycle()
+    }
 }
 
 actual fun encodeJpeg(image: PixelImage, quality: Int): ByteArray? {
+    val bmp = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
     return runCatching {
-        val bmp = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
-        val out = java.io.ByteArrayOutputStream()
+        val out = java.io.ByteArrayOutputStream(image.pixels.size / 4)
         bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)
-        bmp.recycle()
         out.toByteArray()
-    }.getOrNull()
+    }.getOrNull().also { bmp.recycle() }
 }
 
 actual fun toImageBitmap(image: PixelImage): ImageBitmap =
